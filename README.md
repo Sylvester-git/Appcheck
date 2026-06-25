@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Android APK 16KB Alignment Checker
+
+A web tool that verifies whether shared libraries (`.so` files) inside an Android APK are 16KB page-aligned — a requirement for Android 15+ devices with 16KB page size support.
+
+## What it does
+
+Upload an `.apk` file and the tool will:
+
+- Extract all ELF shared libraries from the APK
+- Check each library's `LOAD` segment alignment via `objdump`
+- Report each library as **ALIGNED** (≥ 2\*\*14) or **UNALIGNED**
+- Show APK zip-alignment status (requires `zipalign` build-tools ≥ 35.0.0-rc3)
+- Display a per-architecture breakdown (`arm64-v8a`, `x86_64`, `armeabi-v7a`, `x86`)
+
+## Requirements
+
+The server running this app must have the following tools on `$PATH`:
+
+- `objdump` — ELF inspection (part of `binutils`)
+- `unzip` — APK extraction
+- `zipalign` _(optional)_ — zip-alignment check; install via `sdkmanager "build-tools;35.0.0-rc3"`
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000), then drag and drop an `.apk` file onto the upload zone.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [Next.js](https://nextjs.org) 16 (App Router)
+- React 19
+- Tailwind CSS 4
+- TypeScript 5
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Background
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Android 15 introduced support for devices with 16KB memory page sizes. Apps that ship native libraries must ensure those libraries are aligned to 16KB boundaries — otherwise they will fail to load on 16KB-page devices. See the [Android documentation](https://developer.android.com/guide/practices/page-sizes) for details.
 
-## Deploy on Vercel
+The underlying check script is at [scripts/check_elf_alignment.sh](scripts/check_elf_alignment.sh), which can also be run directly:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+./scripts/check_elf_alignment.sh path/to/app.apk
+```
