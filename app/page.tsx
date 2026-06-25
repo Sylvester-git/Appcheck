@@ -7,6 +7,7 @@ import type { AnalysisResult } from '@/types/analysis';
 
 type AppState =
   | { phase: 'idle' }
+  | { phase: 'uploading'; fileName: string; progress: number }
   | { phase: 'analyzing'; fileName: string }
   | { phase: 'results'; result: AnalysisResult }
   | { phase: 'error'; message: string };
@@ -14,25 +15,43 @@ type AppState =
 export default function Home() {
   const [state, setState] = useState<AppState>({ phase: 'idle' });
 
-  const handleFile = useCallback(async (file: File) => {
-    setState({ phase: 'analyzing', fileName: file.name });
+  const handleFile = useCallback((file: File) => {
+    setState({ phase: 'uploading', fileName: file.name, progress: 0 });
 
-    try {
-      const body = new FormData();
-      body.append('file', file);
+    const body = new FormData();
+    body.append('file', file);
 
-      const res = await fetch('/api/analyze', { method: 'POST', body });
-      const data = await res.json();
+    const xhr = new XMLHttpRequest();
 
-      if (!res.ok || data.error) {
-        setState({ phase: 'error', message: data.error ?? 'Analysis failed' });
-        return;
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        setState({ phase: 'uploading', fileName: file.name, progress: Math.round((e.loaded / e.total) * 100) });
       }
+    });
 
-      setState({ phase: 'results', result: data });
-    } catch {
+    xhr.upload.addEventListener('load', () => {
+      setState({ phase: 'analyzing', fileName: file.name });
+    });
+
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 400 || data.error) {
+          setState({ phase: 'error', message: data.error ?? 'Analysis failed' });
+        } else {
+          setState({ phase: 'results', result: data });
+        }
+      } catch {
+        setState({ phase: 'error', message: 'Invalid response from server.' });
+      }
+    });
+
+    xhr.addEventListener('error', () => {
       setState({ phase: 'error', message: 'Network error. Please try again.' });
-    }
+    });
+
+    xhr.open('POST', '/api/analyze');
+    xhr.send(body);
   }, []);
 
   const reset = useCallback(() => setState({ phase: 'idle' }), []);
@@ -68,6 +87,24 @@ export default function Home() {
             <p className="text-xs text-gray-400 text-center mt-4">
               Requires <span className="font-mono">objdump</span> and <span className="font-mono">unzip</span> on the host
             </p>
+          </div>
+        )}
+
+        {state.phase === 'uploading' && (
+          <div className="animate-fade-in-up">
+            <div className="bg-white border border-gray-100 rounded-2xl px-8 py-10">
+              <div className="text-center space-y-1 mb-6">
+                <p className="text-sm font-medium text-gray-700">{state.fileName}</p>
+                <p className="text-xs text-gray-400">Uploading…</p>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-gray-900 h-1.5 rounded-full transition-all duration-150 ease-out"
+                  style={{ width: `${state.progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 text-right mt-1.5 tabular-nums">{state.progress}%</p>
+            </div>
           </div>
         )}
 
