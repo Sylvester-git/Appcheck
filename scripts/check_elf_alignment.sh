@@ -49,7 +49,40 @@ if [[ "${dir}" == *.apk ]]; then
 
   if { zipalign --help 2>&1 | grep -q "\-P <pagesize_kb>"; }; then
     echo "=== APK zip-alignment ==="
-    zipalign -v -c -P 16 4 "${dir}" | egrep 'lib/arm64-v8a|lib/x86_64|Verification'
+    zipalign -v -c -P 16 4 "${dir}" | grep -E 'lib/.*\.so|Verification'
+    echo "========================="
+  elif command -v python3 >/dev/null 2>&1; then
+    echo "=== APK zip-alignment ==="
+    python3 - "${dir}" << 'PYEOF'
+import struct, sys, zipfile
+
+def check_zip_alignment(apk_path):
+    PAGE_ALIGN = 16 * 1024
+    all_ok = True
+    checked = 0
+    with open(apk_path, 'rb') as raw:
+        with zipfile.ZipFile(apk_path, 'r') as zf:
+            for info in zf.infolist():
+                name = info.filename
+                if not (name.startswith('lib/') and name.endswith('.so')):
+                    continue
+                raw.seek(info.header_offset + 26)
+                fname_len, extra_len = struct.unpack('<HH', raw.read(4))
+                data_offset = info.header_offset + 30 + fname_len + extra_len
+                checked += 1
+                ok = (data_offset % PAGE_ALIGN) == 0
+                if not ok:
+                    all_ok = False
+                print(f"  {name} (offset 0x{data_offset:08x}) {'OK' if ok else 'FAILED'}")
+    if checked == 0:
+        print("  No native libraries found in lib/arm64-v8a or lib/x86_64")
+    elif all_ok:
+        print("Verification successful")
+    else:
+        print("Verification FAILED")
+
+check_zip_alignment(sys.argv[1])
+PYEOF
     echo "========================="
   else
     echo "NOTICE: Zip alignment check requires build-tools version 35.0.0-rc3 or higher."
@@ -61,7 +94,7 @@ if [[ "${dir}" == *.apk ]]; then
 
   dir_filename=$(basename "${dir}")
   tmp=$(mktemp -d -t "${dir_filename%.apk}_out_XXXXX")
-  unzip "${dir}" lib/* -d "${tmp}" >/dev/null 2>&1
+  unzip "${dir}" 'lib/*' -d "${tmp}" >/dev/null 2>&1
   dir="${tmp}"
 fi
 
@@ -96,7 +129,36 @@ for match in $matches; do
 
   [[ $(file "${match}") == *"ELF"* ]] || continue
 
-  res="$(objdump -p "${match}" | grep LOAD | awk '{ print $NF }' | head -1)"
+  res="$(python3 - "${match}" 2>/dev/null << 'PYEOF'
+import struct, sys, math
+def get_load_align(path):
+    with open(path, 'rb') as f:
+        ident = f.read(16)
+        if ident[:4] != b'\x7fELF':
+            return
+        bits = 64 if ident[4] == 2 else 32
+        f.seek(0)
+        if bits == 64:
+            hdr = f.read(64)
+            e_phoff = struct.unpack_from('<Q', hdr, 32)[0]
+            e_phentsize = struct.unpack_from('<H', hdr, 54)[0]
+            e_phnum = struct.unpack_from('<H', hdr, 56)[0]
+        else:
+            hdr = f.read(52)
+            e_phoff = struct.unpack_from('<I', hdr, 28)[0]
+            e_phentsize = struct.unpack_from('<H', hdr, 42)[0]
+            e_phnum = struct.unpack_from('<H', hdr, 44)[0]
+        for i in range(e_phnum):
+            f.seek(e_phoff + i * e_phentsize)
+            ph = f.read(e_phentsize)
+            p_type = struct.unpack_from('<I', ph)[0]
+            p_align = struct.unpack_from('<Q', ph, 48)[0] if bits == 64 else struct.unpack_from('<I', ph, 28)[0]
+            if p_type == 1:
+                print(f"2**{int(math.log2(p_align))}" if p_align > 1 else "2**0")
+                return
+get_load_align(sys.argv[1])
+PYEOF
+)"
   if [[ $res =~ 2\*\*(1[4-9]|[2-9][0-9]|[1-9][0-9]{2,}) ]]; then
     echo -e "${match}: ${GREEN}ALIGNED${ENDCOLOR} ($res)"
   else

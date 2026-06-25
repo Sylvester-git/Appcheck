@@ -3,6 +3,7 @@
 import type { AnalysisResult } from '@/types/analysis';
 import { SummaryStats } from './SummaryStats';
 import { LibraryList } from './LibraryList';
+import { RemediationSection } from './RemediationSection';
 
 interface ResultsDashboardProps {
   result: AnalysisResult;
@@ -26,10 +27,8 @@ export function ResultsDashboard({ result, onReset }: ResultsDashboardProps) {
         </div>
         <div
           className={[
-            'flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium',
-            summary.passed
-              ? 'bg-gray-900 text-white'
-              : 'bg-white text-gray-900 border border-gray-200',
+            'shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium',
+            summary.passed ? 'bg-green-600 text-white' : 'bg-red-600 text-white',
           ].join(' ')}
         >
           <span>{summary.passed ? '✓' : '✗'}</span>
@@ -38,23 +37,11 @@ export function ResultsDashboard({ result, onReset }: ResultsDashboardProps) {
       </div>
 
       <SummaryStats result={result} />
-
       <LibraryList result={result} />
+      <RemediationSection result={result} />
 
-      {/* Zip alignment detail */}
-      {result.zipAlignment.available && result.zipAlignment.output ? (
-        <div
-          className="bg-white border border-gray-100 rounded-xl px-6 py-5 animate-fade-in-up"
-          style={{ animationDelay: '360ms' }}
-        >
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
-            Zip Alignment Output
-          </p>
-          <pre className="text-xs font-mono text-gray-600 whitespace-pre-wrap overflow-auto max-h-40 leading-relaxed">
-            {result.zipAlignment.output}
-          </pre>
-        </div>
-      ) : (
+      {/* Notice when zip alignment check was unavailable */}
+      {!result.zipAlignment.available && (
         <div
           className="rounded-xl px-5 py-3.5 bg-gray-50 animate-fade-in-up"
           style={{ animationDelay: '360ms' }}
