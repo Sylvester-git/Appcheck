@@ -94,7 +94,17 @@ PYEOF
 
   dir_filename=$(basename "${dir}")
   tmp=$(mktemp -d -t "${dir_filename%.apk}_out_XXXXX")
-  unzip "${dir}" 'lib/*' -d "${tmp}" >/dev/null 2>&1
+  python3 - "${dir}" "${tmp}" << 'PYEOF'
+import sys, zipfile, os
+apk_path, out_dir = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(apk_path) as zf:
+    for name in zf.namelist():
+        if name.startswith('lib/') and name.endswith('.so'):
+            dest = os.path.join(out_dir, name)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with zf.open(name) as src, open(dest, 'wb') as dst:
+                dst.write(src.read())
+PYEOF
   dir="${tmp}"
 fi
 
@@ -127,7 +137,7 @@ for match in $matches; do
   [[ "${match}" == *".apk" ]] && echo "WARNING: doesn't recursively inspect .apk file: ${match}"
   [[ "${match}" == *".apex" ]] && echo "WARNING: doesn't recursively inspect .apex file: ${match}"
 
-  [[ $(file "${match}") == *"ELF"* ]] || continue
+  python3 -c "import sys; f=open(sys.argv[1],'rb'); sys.exit(0 if f.read(4)==b'\x7fELF' else 1)" "${match}" 2>/dev/null || continue
 
   res="$(python3 - "${match}" 2>/dev/null << 'PYEOF'
 import struct, sys, math
