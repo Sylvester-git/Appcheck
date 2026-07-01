@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { upload } from '@vercel/blob/client';
 import { DropZone } from '@/components/upload/DropZone';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import type { AnalysisResult } from '@/types/analysis';
@@ -15,43 +16,43 @@ type AppState =
 export default function Home() {
   const [state, setState] = useState<AppState>({ phase: 'idle' });
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setState({ phase: 'uploading', fileName: file.name, progress: 0 });
 
-    const body = new FormData();
-    body.append('file', file);
+    try {
+      const blob = await upload(`apks/${crypto.randomUUID()}-${file.name}`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        onUploadProgress: ({ percentage }) => {
+          setState({ phase: 'uploading', fileName: file.name, progress: Math.round(percentage) });
+        },
+      });
 
-    const xhr = new XMLHttpRequest();
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        setState({ phase: 'uploading', fileName: file.name, progress: Math.round((e.loaded / e.total) * 100) });
-      }
-    });
-
-    xhr.upload.addEventListener('load', () => {
       setState({ phase: 'analyzing', fileName: file.name });
-    });
 
-    xhr.addEventListener('load', () => {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: blob.url, fileName: file.name }),
+      });
+
+      let data: unknown;
       try {
-        const data = JSON.parse(xhr.responseText);
-        if (xhr.status >= 400 || data.error) {
-          setState({ phase: 'error', message: data.error ?? 'Analysis failed' });
-        } else {
-          setState({ phase: 'results', result: data });
-        }
+        data = await res.json();
       } catch {
         setState({ phase: 'error', message: 'Invalid response from server.' });
+        return;
       }
-    });
 
-    xhr.addEventListener('error', () => {
+      const result = data as (AnalysisResult & { error?: string }) | { error: string };
+      if (!res.ok || 'error' in result) {
+        setState({ phase: 'error', message: ('error' in result && result.error) || 'Analysis failed' });
+      } else {
+        setState({ phase: 'results', result: result as AnalysisResult });
+      }
+    } catch {
       setState({ phase: 'error', message: 'Network error. Please try again.' });
-    });
-
-    xhr.open('POST', '/api/analyze');
-    xhr.send(body);
+    }
   }, []);
 
   const reset = useCallback(() => setState({ phase: 'idle' }), []);
@@ -84,9 +85,6 @@ export default function Home() {
         {state.phase === 'idle' && (
           <div className="animate-fade-in-up" style={{ animationDelay: '60ms' }}>
             <DropZone onFile={handleFile} />
-            <p className="text-xs text-gray-400 text-center mt-4">
-              Requires <span className="font-mono">objdump</span> and <span className="font-mono">unzip</span> on the host
-            </p>
           </div>
         )}
 
