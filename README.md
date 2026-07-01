@@ -45,6 +45,7 @@ Open [http://localhost:3000](http://localhost:3000), then drag and drop an `.apk
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
 
+
 ## Background
 
 Android 15 introduced support for devices with 16KB memory page sizes. Apps that ship native libraries must ensure those libraries are aligned to 16KB boundaries — otherwise they will fail to load on 16KB-page devices. See the [Android documentation](https://developer.android.com/guide/practices/page-sizes) for details.
