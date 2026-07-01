@@ -23,6 +23,7 @@ export default function Home() {
       const blob = await upload(`apks/${crypto.randomUUID()}-${file.name}`, file, {
         access: 'public',
         handleUploadUrl: '/api/upload',
+        multipart: true,
         onUploadProgress: ({ percentage }) => {
           setState({ phase: 'uploading', fileName: file.name, progress: Math.round(percentage) });
         },
